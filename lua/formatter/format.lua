@@ -40,7 +40,8 @@ function M.startTask(configs, startLine, endLine, format_then_write)
   local bufnr = api.nvim_get_current_buf()
   local bufname = vim.fn.bufname(bufnr)
   local input = util.getLines(bufnr, startLine, endLine)
-  local inital_changedtick = vim.api.nvim_buf_get_changedtick(bufnr)
+  local initial_changedtick = vim.api.nvim_buf_get_changedtick(bufnr)
+  local initial_tempfile_inline = false
   local output = input
   local errOutput = nil
   local name
@@ -96,7 +97,7 @@ function M.startTask(configs, startLine, endLine, format_then_write)
   end
 
   function F.run(current)
-    if inital_changedtick ~= vim.api.nvim_buf_get_changedtick(bufnr) then
+    if initial_changedtick ~= vim.api.nvim_buf_get_changedtick(bufnr) then
       util.print("Buffer changed while formatting, skipping")
       return
     end
@@ -105,7 +106,15 @@ function M.startTask(configs, startLine, endLine, format_then_write)
     ignore_exitcode = current.config.ignore_exitcode
     local cmd = {current.config.exe}
     if current.config.args ~= nil then
+      -- Tools might be 1 index based, e.g. clang-format
+      local offset = 0
+      if current.config.range_lines_one_based then
+        offset = 1
+      end
+
       for _, arg in ipairs(current.config.args) do
+        arg = arg:gsub("$start_line", startLine + offset)
+        arg = arg:gsub("$end_line", endLine)
         table.insert(cmd, arg)
       end
     end
@@ -114,6 +123,8 @@ function M.startTask(configs, startLine, endLine, format_then_write)
       util.print(string.format("Stdin option is not set for %s. Please set stdin to either true or false", name))
       return
     end
+
+    initial_tempfile_inline = current.config.tempfile_inline
 
     local job_options = {
         on_stderr = F.on_event,
@@ -133,7 +144,11 @@ function M.startTask(configs, startLine, endLine, format_then_write)
       vim.fn.chansend(job_id, output)
       vim.fn.chanclose(job_id, "stdin")
     else
-      local tempfile_name = util.create_temp_file(bufname, output, current.config)
+      local tempfile_content = output
+      if initial_tempfile_inline then
+        tempfile_content = util.getLines(bufnr, 0, -1)
+      end
+      local tempfile_name = util.create_temp_file(bufname, tempfile_content, current.config)
       table.insert(cmd, tempfile_name)
       local job_id =
         vim.fn.jobstart(
@@ -156,9 +171,22 @@ function M.startTask(configs, startLine, endLine, format_then_write)
   end
 
   function F.done()
-    if inital_changedtick ~= vim.api.nvim_buf_get_changedtick(bufnr) then
+    if initial_changedtick ~= vim.api.nvim_buf_get_changedtick(bufnr) then
       util.print("Buffer changed while formatting, not applying formatting")
       return
+    end
+
+    if initial_tempfile_inline then
+      -- We need to prepare the range initially specified by the user for diff comparision with the original input
+      local adjust = vim.fn.line('$') - #output
+      -- Refrain from using the convenient unpack, since that will not fly when formatting large files
+      local tempfile_output = {}
+      local j = 1
+      for i = startLine + 1, endLine - adjust do
+        tempfile_output[j] = output[i]
+        j = j + 1
+      end
+      output = tempfile_output
     end
 
     if not util.isSame(input, output) then
@@ -170,6 +198,7 @@ function M.startTask(configs, startLine, endLine, format_then_write)
         )
         return
       end
+
       util.setLines(bufnr, startLine, endLine, output)
       vim.fn.winrestview(view)
 

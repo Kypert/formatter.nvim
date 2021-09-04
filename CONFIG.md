@@ -82,20 +82,25 @@ require('formatter').setup({
 
 ## clang-format
 
+Run clang-format with inline (`-i`) and hint about the lines to operate on by setting `$start_line` and `$end_line`.
+This makes range formatting work, in the sense that the correct indentation will be kept.
+
 ```lua
+function formatter_clang_format()
+  return {
+    exe = clang_format_exe,
+    args = {"--assume-filename", vim.api.nvim_buf_get_name(0), "--lines", "$start_line:$end_line", "-i"},
+    stdin = false,
+    cwd = vim.fn.getcwd(),
+    tempfile_inline = true,
+    range_lines_one_based = true,
+  }
+end
+
 require('formatter').setup({
   filetype = {
-    cpp = {
-        -- clang-format
-       function()
-          return {
-            exe = "clang-format",
-            args = {"--assume-filename", vim.api.nvim_buf_get_name(0)},
-            stdin = true,
-            cwd = vim.fn.expand('%:p:h')  -- Run clang-format in cwd of the file.
-          }
-        end
-    },
+    c = { formatter_clang_format },
+    cpp = { formatter_clang_format },
   }
 })
 ```

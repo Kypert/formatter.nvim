@@ -44,12 +44,20 @@ Each formatter should return a table that consist of:
 - `tempfile_dir`: directory for temp file when not using stdin (optional)
 - `tempfile_prefix`: prefix for temp file when not using stdin (optional)
 - `tempfile_postfix`: postfix for temp file when not using stdin (optional)
+- `tempfile_inline`: Let the format tool operate on the whole buffer of the temp file (optional)
+- `range_lines_one_based`: When replacing `$start_line`, convert the line number to be 1-based (optional)
 
 ### cwd
 
 The cwd argument can be used for e.g. monolithic projects which contain sources with different styles.
 Setting cwd to the path of the file being formatted will cause e.g. `clang-format` to search for the
 nearest `.clang-format` file in the file's parent directories.
+
+### tempfile\_inline
+
+This argument is advantages to use with tools that need context to figure out the level of indentations of certain
+scopes, e.g. `clang-format`. In particular, when working with ranges, the tool can also be hinted with the range by
+setting the `$start_line` and `$end_line`, which will be replaced before triggering the tool.
 
 ### Format on save
 
